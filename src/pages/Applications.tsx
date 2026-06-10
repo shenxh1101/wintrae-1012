@@ -61,71 +61,73 @@ export default function Applications() {
     addApplication,
     updateApplicationStatus,
     getArtworkById,
+    addContractMilestone,
+    updateContractMilestone,
+    deleteContractMilestone,
+    getApplicationById,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<ApplicationStatus | "all">("pending");
-  const [selectedApplication, setSelectedApplication] = useState<BorrowApplication | null>(null);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newForm, setNewForm] = useState<NewApplicationForm>(emptyForm);
   const [approvalRemark, setApprovalRemark] = useState("");
-  const [milestones, setMilestones] = useState<ContractMilestone[]>([]);
   const [newMilestone, setNewMilestone] = useState({ name: "", due_date: "" });
+
+  const selectedApplication = selectedApplicationId
+    ? getApplicationById(selectedApplicationId)
+    : null;
 
   const filteredApplications = activeTab === "all"
     ? applications
     : applications.filter((a) => a.status === activeTab);
 
   const openDetail = (app: BorrowApplication) => {
-    setSelectedApplication(app);
+    setSelectedApplicationId(app.id);
     setApprovalRemark(app.approval_remark || "");
-    setMilestones(app.contract_milestones.map((m) => ({ ...m })));
   };
 
   const closeDetail = () => {
-    setSelectedApplication(null);
+    setSelectedApplicationId(null);
     setApprovalRemark("");
-    setMilestones([]);
     setNewMilestone({ name: "", due_date: "" });
   };
 
   const handleApprove = () => {
-    if (!selectedApplication) return;
-    updateApplicationStatus(selectedApplication.id, "approved", approvalRemark);
+    if (!selectedApplicationId) return;
+    updateApplicationStatus(selectedApplicationId, "approved", approvalRemark);
     closeDetail();
   };
 
   const handleReject = () => {
-    if (!selectedApplication) return;
-    updateApplicationStatus(selectedApplication.id, "rejected", approvalRemark);
+    if (!selectedApplicationId) return;
+    updateApplicationStatus(selectedApplicationId, "rejected", approvalRemark);
     closeDetail();
   };
 
   const toggleMilestone = (id: string) => {
-    setMilestones((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              completed: !m.completed,
-              completed_date: !m.completed ? new Date().toISOString().slice(0, 10) : undefined,
-            }
-          : m
-      )
-    );
+    if (!selectedApplicationId) return;
+    const milestone = selectedApplication?.contract_milestones.find((m) => m.id === id);
+    if (!milestone) return;
+    updateContractMilestone(selectedApplicationId, id, {
+      completed: !milestone.completed,
+      completed_date: !milestone.completed ? new Date().toISOString().slice(0, 10) : undefined,
+    });
   };
 
   const addMilestone = () => {
-    if (!newMilestone.name || !newMilestone.due_date) return;
-    const id = `cm-${Date.now().toString(36)}`;
-    setMilestones((prev) => [
-      ...prev,
-      { id, name: newMilestone.name, due_date: newMilestone.due_date, completed: false },
-    ]);
+    if (!selectedApplicationId || !newMilestone.name || !newMilestone.due_date) return;
+    addContractMilestone(selectedApplicationId, {
+      name: newMilestone.name,
+      due_date: newMilestone.due_date,
+      completed: false,
+    });
     setNewMilestone({ name: "", due_date: "" });
   };
 
   const removeMilestone = (id: string) => {
-    setMilestones((prev) => prev.filter((m) => m.id !== id));
+    if (!selectedApplicationId) return;
+    deleteContractMilestone(selectedApplicationId, id);
   };
 
   const handleCreate = () => {
@@ -505,11 +507,11 @@ export default function Applications() {
                   <h3 className="text-sm font-semibold text-ink/70 tracking-wide mb-4 flex items-center justify-between">
                     <span>合同里程碑</span>
                     <span className="text-xs font-normal text-ink/40">
-                      {milestones.filter((m) => m.completed).length}/{milestones.length} 已完成
+                      {selectedApplication?.contract_milestones.filter((m) => m.completed).length || 0}/{selectedApplication?.contract_milestones.length || 0} 已完成
                     </span>
                   </h3>
 
-                  {selectedApplication.status === "approved" && (
+                  {selectedApplication?.status === "approved" && (
                     <div className="mb-4 grid grid-cols-[1fr_auto_auto] gap-2">
                       <input
                         type="text"
@@ -535,7 +537,7 @@ export default function Applications() {
                   )}
 
                   <div className="space-y-2">
-                    {milestones.map((m) => (
+                    {selectedApplication?.contract_milestones.map((m) => (
                       <div
                         key={m.id}
                         className={cn(
@@ -576,7 +578,7 @@ export default function Applications() {
                             )}
                           </div>
                         </div>
-                        {selectedApplication.status === "approved" && (
+                        {selectedApplication?.status === "approved" && (
                           <button
                             onClick={() => removeMilestone(m.id)}
                             className="p-1.5 rounded-gallery hover:bg-terracotta-50 text-ink/30 hover:text-terracotta-400 transition-colors"
@@ -586,7 +588,7 @@ export default function Applications() {
                         )}
                       </div>
                     ))}
-                    {milestones.length === 0 && (
+                    {selectedApplication?.contract_milestones.length === 0 && (
                       <div className="text-center py-8 text-ink/30 text-sm">
                         暂无里程碑
                       </div>

@@ -17,7 +17,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { useAppStore } from "../store";
-import type { DocumentCategory } from "../types";
+import type { DocumentCategory, Document } from "../types";
 import {
   documentCategoryLabel,
   documentCategoryColor,
@@ -51,12 +51,14 @@ export default function Documents() {
   const documents = useAppStore((state) => state.documents);
   const applications = useAppStore((state) => state.applications);
   const addDocument = useAppStore((state) => state.addDocument);
+  const updateDocument = useAppStore((state) => state.updateDocument);
 
   const [keyword, setKeyword] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [applicationFilter, setApplicationFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -66,6 +68,24 @@ export default function Documents() {
     description: "",
     tags: "",
   });
+
+  const handlePreview = (doc: Document) => {
+    setPreviewDocument(doc);
+  };
+
+  const handleDownload = (doc: Document) => {
+    const link = document.createElement("a");
+    link.href = doc.file_url || "#";
+    link.download = doc.name;
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleArchive = (doc: Document) => {
+    updateDocument(doc.id, { archived: !doc.archived });
+  };
 
   const categoryCounts = useMemo(() => {
     const counts: Record<CategoryFilter, number> = {
@@ -263,13 +283,30 @@ export default function Documents() {
                 >
                   <div className="absolute top-0 right-0 left-0 z-10 bg-gradient-to-b from-ink/50 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                     <div className="flex justify-end gap-1.5">
-                      <button className="p-2 rounded-gallery bg-white/90 text-ink hover:bg-white transition-colors">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handlePreview(doc); }}
+                        className="p-2 rounded-gallery bg-white/90 text-ink hover:bg-white transition-colors"
+                        title="预览"
+                      >
                         <Eye size={14} />
                       </button>
-                      <button className="p-2 rounded-gallery bg-white/90 text-ink hover:bg-white transition-colors">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDownload(doc); }}
+                        className="p-2 rounded-gallery bg-white/90 text-ink hover:bg-white transition-colors"
+                        title="下载"
+                      >
                         <Download size={14} />
                       </button>
-                      <button className="p-2 rounded-gallery bg-white/90 text-ink hover:bg-white transition-colors">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleArchive(doc); }}
+                        className={cn(
+                          "p-2 rounded-gallery transition-colors",
+                          doc.archived
+                            ? "bg-gold-100 text-gold-600 hover:bg-gold-200"
+                            : "bg-white/90 text-ink hover:bg-white"
+                        )}
+                        title={doc.archived ? "取消归档" : "归档"}
+                      >
                         <Archive size={14} />
                       </button>
                     </div>
@@ -417,13 +454,30 @@ export default function Documents() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <button className="p-1.5 rounded-gallery text-ink/50 hover:text-ink hover:bg-ink/5 transition-colors">
+                            <button
+                              onClick={() => handlePreview(doc)}
+                              className="p-1.5 rounded-gallery text-ink/50 hover:text-ink hover:bg-ink/5 transition-colors"
+                              title="预览"
+                            >
                               <Eye size={15} />
                             </button>
-                            <button className="p-1.5 rounded-gallery text-ink/50 hover:text-ink hover:bg-ink/5 transition-colors">
+                            <button
+                              onClick={() => handleDownload(doc)}
+                              className="p-1.5 rounded-gallery text-ink/50 hover:text-ink hover:bg-ink/5 transition-colors"
+                              title="下载"
+                            >
                               <Download size={15} />
                             </button>
-                            <button className="p-1.5 rounded-gallery text-ink/50 hover:text-ink hover:bg-ink/5 transition-colors">
+                            <button
+                              onClick={() => handleArchive(doc)}
+                              className={cn(
+                                "p-1.5 rounded-gallery transition-colors",
+                                doc.archived
+                                  ? "text-gold-600 bg-gold-50 hover:bg-gold-100"
+                                  : "text-ink/50 hover:text-ink hover:bg-ink/5"
+                              )}
+                              title={doc.archived ? "取消归档" : "归档"}
+                            >
                               <Archive size={15} />
                             </button>
                           </div>
@@ -577,6 +631,145 @@ export default function Documents() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {previewDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-ink/40 backdrop-blur-sm animate-fade-in"
+            onClick={() => setPreviewDocument(null)}
+          />
+          <div className="relative w-full max-w-2xl bg-cream-50 rounded-gallery shadow-gallery-lg animate-slide-up max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center",
+                    previewDocument.category === "contract" && "bg-moss-50 text-moss-500",
+                    previewDocument.category === "insurance" && "bg-gold-50 text-gold-500",
+                    previewDocument.category === "inspection" && "bg-slate-100 text-slate-500",
+                    previewDocument.category === "transport" && "bg-slate-50 text-slate-500",
+                    previewDocument.category === "other" && "bg-ink-50 text-ink-500"
+                  )}
+                >
+                  {(() => {
+                    const IconComp = categoryIcons[previewDocument.category];
+                    return <IconComp size={20} />;
+                  })()}
+                </div>
+                <div>
+                  <h2 className="font-display text-lg font-semibold text-ink">
+                    {previewDocument.name}
+                  </h2>
+                  <p className="text-xs text-ink/40 mt-0.5">
+                    {previewDocument.version} · {formatFileSize(previewDocument.file_size)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewDocument(null)}
+                className="btn-gallery-ghost p-2"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="card-gallery p-5">
+                <h3 className="text-sm font-semibold text-ink/70 tracking-wide mb-4">文档信息</h3>
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between">
+                    <span className="text-xs text-ink/40">文档分类</span>
+                    <StatusBadge
+                      label={documentCategoryLabel[previewDocument.category]}
+                      className={cn(documentCategoryColor[previewDocument.category], "border")}
+                    />
+                  </div>
+                  <div className="flex items-start justify-between">
+                    <span className="text-xs text-ink/40">关联借展</span>
+                    <span className="text-sm text-ink">
+                      {getApplicationName(previewDocument.application_id)}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between">
+                    <span className="text-xs text-ink/40">上传日期</span>
+                    <span className="text-sm text-ink">
+                      {formatDate(previewDocument.uploaded_at)}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between">
+                    <span className="text-xs text-ink/40">状态</span>
+                    <StatusBadge
+                      label={previewDocument.archived ? "已归档" : "未归档"}
+                      className={cn(
+                        "border",
+                        previewDocument.archived
+                          ? "bg-ink-50 text-ink-500 border-ink-100"
+                          : "bg-moss-50 text-moss-400 border-moss-200"
+                      )}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {previewDocument.description && (
+                <div className="card-gallery p-5">
+                  <h3 className="text-sm font-semibold text-ink/70 tracking-wide mb-3">文档描述</h3>
+                  <p className="text-sm text-ink/80 leading-relaxed">
+                    {previewDocument.description}
+                  </p>
+                </div>
+              )}
+
+              {previewDocument.tags.length > 0 && (
+                <div className="card-gallery p-5">
+                  <h3 className="text-sm font-semibold text-ink/70 tracking-wide mb-3">标签</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {previewDocument.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="tag-gallery bg-ink-50 text-ink-500 border border-ink-100"
+                      >
+                        <Tag size={10} className="mr-1" />
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="card-gallery p-5 bg-ink-50/30 border-dashed border-ink/10">
+                <div className="flex flex-col items-center justify-center py-8">
+                  <FileText size={48} className="text-ink/20 mb-3" />
+                  <p className="text-sm text-ink/50 mb-4">文件预览区域</p>
+                  <p className="text-xs text-ink/30">
+                    文件名：{previewDocument.name}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-ink/10 flex items-center justify-end gap-3 bg-white">
+              <button
+                onClick={() => handleArchive(previewDocument)}
+                className={cn(
+                  "btn-gallery flex items-center gap-2",
+                  previewDocument.archived && "border-gold-300 text-gold-500 hover:bg-gold-50"
+                )}
+              >
+                <Archive size={16} />
+                {previewDocument.archived ? "取消归档" : "归档"}
+              </button>
+              <button
+                onClick={() => handleDownload(previewDocument)}
+                className="btn-gallery-primary flex items-center gap-2"
+              >
+                <Download size={16} />
+                下载
+              </button>
+            </div>
           </div>
         </div>
       )}

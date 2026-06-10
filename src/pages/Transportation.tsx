@@ -13,6 +13,11 @@ import {
   ArrowRight,
   ArrowLeft,
   ChevronRight,
+  Edit3,
+  Save,
+  Play,
+  CheckCircle2,
+  Send,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -27,6 +32,16 @@ const COLUMNS: { key: TransportStatus; label: string; icon: typeof Package }[] =
   { key: "in_transit", label: "运输中", icon: Truck },
   { key: "delivered", label: "已送达", icon: MapPin },
 ];
+
+const STATUS_FLOW: TransportStatus[] = ["pending", "packing", "ready", "in_transit", "delivered"];
+
+const STATUS_ACTION_LABELS: Record<TransportStatus, string> = {
+  pending: "开始包装",
+  packing: "完成包装，待发运",
+  ready: "开始运输",
+  in_transit: "确认送达",
+  delivered: "已完成",
+};
 
 export default function Transportation() {
   const { transportTasks, applications, artworks } = useAppStore();
@@ -177,6 +192,7 @@ export default function Transportation() {
         <DetailPanel
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
+          onUpdate={(updatedTask) => setSelectedTask(updatedTask)}
         />
       )}
     </div>
@@ -186,17 +202,65 @@ export default function Transportation() {
 function DetailPanel({
   task,
   onClose,
+  onUpdate,
 }: {
   task: TransportTask;
   onClose: () => void;
+  onUpdate: (task: TransportTask) => void;
 }) {
-  const { applications, artworks } = useAppStore();
+  const { applications, artworks, updateTransportTask, updateTransportStatus } = useAppStore();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    packaging_material: task.packaging_material,
+    carrier: task.carrier,
+    tracking_no: task.tracking_no,
+    route: task.route,
+    transport_staff: task.transport_staff,
+    ship_date: task.ship_date,
+    arrive_date: task.arrive_date,
+  });
+
   const app = applications.find((a) => a.id === task.application_id);
   const artworkList = app
     ? app.artwork_ids
         .map((id) => artworks.find((a) => a.id === id))
         .filter(Boolean)
     : [];
+
+  const currentStatusIndex = STATUS_FLOW.indexOf(task.status);
+  const canAdvance = currentStatusIndex < STATUS_FLOW.length - 1;
+
+  const handleEditChange = (field: keyof typeof editForm, value: string) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = () => {
+    updateTransportTask(task.id, editForm);
+    onUpdate({ ...task, ...editForm });
+    setIsEditing(false);
+  };
+
+  const handleAdvanceStatus = () => {
+    if (!canAdvance) return;
+    const nextStatus = STATUS_FLOW[currentStatusIndex + 1];
+    updateTransportStatus(task.id, nextStatus);
+    onUpdate({ ...task, status: nextStatus });
+  };
+
+  const getStatusActionIcon = (status: TransportStatus) => {
+    switch (status) {
+      case "pending":
+        return <Play className="w-4 h-4" />;
+      case "packing":
+        return <Package className="w-4 h-4" />;
+      case "ready":
+        return <Send className="w-4 h-4" />;
+      case "in_transit":
+        return <CheckCircle2 className="w-4 h-4" />;
+      default:
+        return <CheckCircle2 className="w-4 h-4" />;
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -231,15 +295,52 @@ function DetailPanel({
               {app?.borrower_name}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-gallery hover:bg-ink/5 transition-colors text-ink/50 hover:text-ink -mr-2"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {canAdvance && (
+              <button
+                onClick={handleAdvanceStatus}
+                className="btn-gallery-primary px-3 py-2 text-sm flex items-center gap-1.5"
+              >
+                {getStatusActionIcon(task.status)}
+                {STATUS_ACTION_LABELS[task.status]}
+              </button>
+            )}
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className={cn(
+                "p-2 rounded-gallery transition-colors",
+                isEditing
+                  ? "bg-gold-100 text-gold-600"
+                  : "hover:bg-ink/5 transition-colors text-ink/50 hover:text-ink"
+              )}
+            >
+              <Edit3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-gallery hover:bg-ink/5 transition-colors text-ink/50 hover:text-ink"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
+          {isEditing && (
+            <div className="card-gallery p-4 bg-gold-50/50 border-gold-200">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gold-700">编辑模式</span>
+                <button
+                  onClick={handleSave}
+                  className="btn-gallery-primary px-3 py-1.5 text-sm flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  保存修改
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="card-gallery p-4">
             <h3 className="font-display text-sm font-semibold text-ink mb-3 flex items-center gap-2">
               <Package className="w-4 h-4 text-gold-400" />
@@ -248,9 +349,19 @@ function DetailPanel({
             <div className="space-y-4">
               <div>
                 <label className="label-gallery">包装材料</label>
-                <p className="text-sm text-ink leading-relaxed">
-                  {task.packaging_material || "—"}
-                </p>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.packaging_material}
+                    onChange={(e) => handleEditChange("packaging_material", e.target.value)}
+                    placeholder="如：定制木箱 + 缓冲材料"
+                    className="input-gallery text-sm"
+                  />
+                ) : (
+                  <p className="text-sm text-ink leading-relaxed">
+                    {task.packaging_material || "—"}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="label-gallery">包装方式</label>
@@ -322,41 +433,99 @@ function DetailPanel({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label-gallery">承运商</label>
-                  <p className="text-sm text-ink">{task.carrier || "—"}</p>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editForm.carrier}
+                      onChange={(e) => handleEditChange("carrier", e.target.value)}
+                      placeholder="如：顺丰速运"
+                      className="input-gallery text-sm"
+                    />
+                  ) : (
+                    <p className="text-sm text-ink">{task.carrier || "—"}</p>
+                  )}
                 </div>
                 <div>
                   <label className="label-gallery">运单号</label>
-                  <p className="text-sm text-ink font-mono">
-                    {task.tracking_no || "—"}
-                  </p>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editForm.tracking_no}
+                      onChange={(e) => handleEditChange("tracking_no", e.target.value)}
+                      placeholder="如：SF1234567890"
+                      className="input-gallery text-sm font-mono"
+                    />
+                  ) : (
+                    <p className="text-sm text-ink font-mono">
+                      {task.tracking_no || "—"}
+                    </p>
+                  )}
                 </div>
               </div>
               <div>
                 <label className="label-gallery">运输路线</label>
-                <p className="text-sm text-ink leading-relaxed">
-                  {task.route || "—"}
-                </p>
+                {isEditing ? (
+                  <textarea
+                    value={editForm.route}
+                    onChange={(e) => handleEditChange("route", e.target.value)}
+                    placeholder="如：北京美术馆 → 上海展览馆"
+                    rows={2}
+                    className="input-gallery text-sm resize-none"
+                  />
+                ) : (
+                  <p className="text-sm text-ink leading-relaxed">
+                    {task.route || "—"}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="label-gallery">运输人员</label>
-                <p className="text-sm text-ink">
-                  {task.transport_staff || "—"}
-                </p>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.transport_staff}
+                    onChange={(e) => handleEditChange("transport_staff", e.target.value)}
+                    placeholder="如：张三、李四"
+                    className="input-gallery text-sm"
+                  />
+                ) : (
+                  <p className="text-sm text-ink">
+                    {task.transport_staff || "—"}
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label-gallery">发运日期</label>
-                  <div className="flex items-center gap-1.5 text-sm text-ink">
-                    <Calendar className="w-3.5 h-3.5 text-ink/40" />
-                    {formatDate(task.ship_date)}
-                  </div>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={editForm.ship_date}
+                      onChange={(e) => handleEditChange("ship_date", e.target.value)}
+                      className="input-gallery text-sm"
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-sm text-ink">
+                      <Calendar className="w-3.5 h-3.5 text-ink/40" />
+                      {formatDate(task.ship_date)}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="label-gallery">到达日期</label>
-                  <div className="flex items-center gap-1.5 text-sm text-ink">
-                    <Calendar className="w-3.5 h-3.5 text-ink/40" />
-                    {formatDate(task.arrive_date)}
-                  </div>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={editForm.arrive_date}
+                      onChange={(e) => handleEditChange("arrive_date", e.target.value)}
+                      className="input-gallery text-sm"
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-sm text-ink">
+                      <Calendar className="w-3.5 h-3.5 text-ink/40" />
+                      {formatDate(task.arrive_date)}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

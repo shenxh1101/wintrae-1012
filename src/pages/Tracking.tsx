@@ -74,6 +74,7 @@ export default function Tracking() {
 
   const [expandedStage, setExpandedStage] = useState<BorrowStage | null>(null);
   const [showStatusForm, setShowStatusForm] = useState(false);
+  const [statusFormMode, setStatusFormMode] = useState<"add_record" | "advance_stage">("add_record");
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [statusForm, setStatusForm] = useState<NewStatusForm>(emptyStatusForm);
   const [expenseForm, setExpenseForm] = useState<NewExpenseForm>(emptyExpenseForm);
@@ -121,20 +122,16 @@ export default function Tracking() {
 
     const nextStage = BORROW_STAGES[currentStageIndex + 1].key;
     const operator = statusForm.operator || "当前用户";
-    const remark = statusForm.remark || `进入${stageLabel[nextStage]}阶段`;
+    const remark = statusForm.remark.trim() || `进入${stageLabel[nextStage]}阶段`;
 
-    updateApplicationStage(selectedApplicationId, nextStage, remark, operator);
-
-    if (statusForm.damage_note || statusForm.inspection_photos.length > 0) {
-      addStatusRecord({
-        application_id: selectedApplicationId,
-        stage: nextStage,
-        operator,
-        remark: statusForm.remark,
-        inspection_photos: statusForm.inspection_photos,
-        damage_note: statusForm.damage_note,
-      });
-    }
+    updateApplicationStage(
+      selectedApplicationId,
+      nextStage,
+      remark,
+      operator,
+      statusForm.inspection_photos,
+      statusForm.damage_note
+    );
 
     setStatusForm(emptyStatusForm);
     setShowStatusForm(false);
@@ -373,7 +370,11 @@ export default function Tracking() {
                 <div className="flex flex-wrap items-center gap-3 mb-5">
                   {currentStageIndex < BORROW_STAGES.length - 1 ? (
                     <button
-                      onClick={() => setShowStatusForm(!showStatusForm)}
+                      onClick={() => {
+                        setStatusForm(emptyStatusForm);
+                        setStatusFormMode("advance_stage");
+                        setShowStatusForm(true);
+                      }}
                       className="btn-gallery-primary flex items-center gap-2"
                     >
                       <ArrowRight className="w-4 h-4" />
@@ -388,6 +389,7 @@ export default function Tracking() {
                   <button
                     onClick={() => {
                       setStatusForm(emptyStatusForm);
+                      setStatusFormMode("add_record");
                       setShowStatusForm(true);
                     }}
                     className="btn-gallery flex items-center gap-2"
@@ -399,6 +401,26 @@ export default function Tracking() {
 
                 {showStatusForm && (
                   <div className="bg-cream-50 border border-ink/8 rounded-gallery p-5 space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-display text-base font-semibold text-ink flex items-center gap-2">
+                        {statusFormMode === "add_record" ? (
+                          <>
+                            <Plus className="w-4 h-4 text-gold-400" />
+                            添加当前阶段记录
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRight className="w-4 h-4 text-moss-400" />
+                            推进到下一阶段：{stageLabel[BORROW_STAGES[currentStageIndex + 1].key]}
+                          </>
+                        )}
+                      </h3>
+                      {statusFormMode === "advance_stage" && (
+                        <span className="text-xs text-ink/40">
+                          当前阶段：{stageLabel[BORROW_STAGES[currentStageIndex].key]}
+                        </span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="label-gallery">操作人</label>
@@ -414,14 +436,21 @@ export default function Tracking() {
                       </div>
                     </div>
                     <div>
-                      <label className="label-gallery">备注 *</label>
+                      <label className="label-gallery">
+                        备注
+                        {statusFormMode === "add_record" && <span className="text-terracotta-400 ml-1">*</span>}
+                      </label>
                       <textarea
                         value={statusForm.remark}
                         onChange={(e) =>
                           setStatusForm((p) => ({ ...p, remark: e.target.value }))
                         }
                         rows={3}
-                        placeholder="请输入状态变更备注..."
+                        placeholder={
+                          statusFormMode === "add_record"
+                            ? "请输入状态变更备注..."
+                            : "请输入阶段变更备注（可选，将自动记录验收照片和损伤备注）"
+                        }
                         className="input-gallery resize-none"
                       />
                     </div>
@@ -473,29 +502,24 @@ export default function Tracking() {
                       />
                     </div>
                     <div className="flex items-center gap-3 pt-2">
-                      <button
-                        onClick={
-                          currentStageIndex < BORROW_STAGES.length - 1 &&
-                          !statusForm.remark.trim()
-                            ? handleAdvanceStage
-                            : handleAddStatusRecord
-                        }
-                        className="btn-gallery-primary"
-                      >
-                        {currentStageIndex < BORROW_STAGES.length - 1 &&
-                        !statusForm.remark.trim()
-                          ? "确认推进阶段"
-                          : "添加记录"}
-                      </button>
-                      {currentStageIndex < BORROW_STAGES.length - 1 &&
-                        statusForm.remark.trim() && (
-                          <button
-                            onClick={handleAdvanceStage}
-                            className="btn-gallery bg-moss-400 border-moss-400 text-white hover:bg-moss-500 hover:border-moss-500"
-                          >
-                            添加记录并推进阶段
-                          </button>
-                        )}
+                      {statusFormMode === "add_record" ? (
+                        <button
+                          onClick={handleAddStatusRecord}
+                          disabled={!statusForm.remark.trim()}
+                          className="btn-gallery-primary disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="w-4 h-4" />
+                          添加记录
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleAdvanceStage}
+                          className="btn-gallery-primary bg-moss-400 border-moss-400 hover:bg-moss-500 hover:border-moss-500"
+                        >
+                          <ArrowRight className="w-4 h-4" />
+                          确认推进到下一阶段
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setShowStatusForm(false);
